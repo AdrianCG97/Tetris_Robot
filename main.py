@@ -7,16 +7,63 @@ import open3d as o3d
 
 
 default_euler = np.array([np.pi, 0, 0])
-s_x = 0
-s_y = .62 -.25
+s_x = .40
+s_y = .50
 
 board_angle = -np.pi/2
 spawn_angle = -np.pi
 
-class TetrisBlocks:
+class TetrisBlock:
     def __init__(self, body, type):
-        self.body = body
+        self.block = body
         self.type = type
+
+    def getGrabPoint(self):
+        pos, orient = self.block.get_base_pos_orient()
+        euler = m.get_euler(orient)
+        yaw = m.get_euler(orient)[2]
+
+        x_g = pos[0]
+        y_g = pos[1]
+        z_g = pos[2] + .01     # .01 to grab, .02 to see point
+        grab_pos = [x_g, y_g, z_g]  #TODO delete
+        m.Shape(m.Sphere(.01), static=True, mass=0, position=grab_pos, collision=False) #TODO delete
+
+        if(self.type == 'T'):
+            d = .03
+            x_g = x_g + (d * np.cos(yaw + np.pi/2))
+            y_g = y_g + (d * np.sin(yaw + np.pi/2))
+
+        elif(self.type == 'I'):
+            x_g = x_g
+            y_g = y_g
+
+        elif(self.type == 'L'):
+            d = .015
+            x_g = x_g + (d * np.cos(yaw + 5*np.pi/8))
+            y_g = y_g + (d * np.sin(yaw + 5*np.pi/8))
+
+        elif(self.type == 'J'):
+            d = .015
+            x_g = x_g + (d * np.cos(yaw + 3*np.pi/8))
+            y_g = y_g + (d * np.sin(yaw + 3*np.pi/8))
+
+        elif(self.type == 'S'):
+            d = .04
+            x_g = x_g + (d * np.cos(yaw - 7*np.pi/8))
+            y_g = y_g + (d * np.sin(yaw - 7*np.pi/8))
+            orient = m.get_quaternion([euler[0], euler[1], yaw + np.pi/2])
+
+        elif(self.type == 'Z'):
+            d = .04
+            x_g = x_g + (d * np.cos(yaw + 7*np.pi/8))
+            y_g = y_g + (d * np.sin(yaw + 7*np.pi/8))
+            orient = m.get_quaternion([euler[0], euler[1], yaw + np.pi/2])
+        
+        grab_pos = [x_g, y_g, z_g]
+        m.Shape(m.Sphere(.01), static=True, mass=0, position=grab_pos, collision=False) #TODO delete
+
+        return grab_pos, orient
 
 class TetrisBoard:
     def __init__(self, x_pos, y_pos, z_pos):
@@ -63,27 +110,44 @@ def get_point_cloud(obj):
     normals = np.asarray(pcd.normals)
     return pc, normals
 
-def generate_block(type):
+def generate_block(type, position=[0,0,0.8]):
     # Create a body
-    rand_loc = np.random.uniform(-.2, .2, (2, 1))
-    print(rand_loc)
-
-    block = 0
+    r_yaw = np.random.uniform(-np.pi, np.pi)
+    print("Random yaw: ", r_yaw)
+    block_body = 0
 
     if(type == 'I'):
-        block = m.URDF(filename='./Tetris_I_description/urdf/Tetris_I.xacro', static=False, position=[0, -.2, .9], 
-                      orientation=m.get_quaternion(np.array([0, 0, 0])))
+        block_body = m.URDF(filename='./Tetris_I_description/urdf/Tetris_I.xacro', static=False, position=position,
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
         
     elif(type == 'J'):
-        block = m.URDF(filename='./Tetris_J_description/urdf/Tetris_J.xacro', static=False, position=[.5, -.6, .8], 
-                      orientation=m.get_quaternion(np.array([0, 0, 0])))
+        block_body = m.URDF(filename='./Tetris_J_description/urdf/Tetris_J.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
         
     elif(type == 'T'):
-        block = m.URDF(filename='./Tetris_T_description/urdf/Tetris_T.xacro', static=False, position=[0, 0, .8], 
-                      orientation=m.get_quaternion(np.array([0, 0, 0])))
+        block_body = m.URDF(filename='./Tetris_T_description/urdf/Tetris_T.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
+        
+    elif(type == 'L'):
+        block_body = m.URDF(filename='./Tetris_L_description/urdf/Tetris_L.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
+        
+    elif(type == 'O'):
+        block_body = m.URDF(filename='./Tetris_O_description/urdf/Tetris_O.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
+        
+    elif(type == 'S'):
+        block_body = m.URDF(filename='./Tetris_S_description/urdf/Tetris_S.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
+        
+    elif(type == 'Z'):
+        block_body = m.URDF(filename='./Tetris_Z_description/urdf/Tetris_Z.xacro', static=False, position=position, 
+                      orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
 
-    block.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=0)
+    block_body.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=0)
     m.step_simulation(50)
+
+    block = TetrisBlock(block_body, type)
 
     return block
 
@@ -135,31 +199,30 @@ def moveInDirection():
     pass
 
 def grabBlock(obj):
-    position, orientation = pb.getBasePositionAndOrientation(obj.body, physicsClientId=obj.id)
+    # position, orientation = pb.getBasePositionAndOrientation(obj.block.body, physicsClientId=obj.block.id)
 
-    position = (position[0], position[1] +.03, position[2])  # delete later
+    position, orientation = obj.getGrabPoint()  # delete later
 
+    # Draw dot on top of block
     pos_up = (position[0], position[1], 1)
     m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, orientation=orientation, collision=False)
-    print("Position: ", pos_up)
-    print("Orientation: ", orientation)
 
-    pos_up = (position[0], position[1], 1)
     # Move above block
     gripper_orient = default_euler + [0, 0, np.pi/2 + m.get_euler(orientation)[-1]]
     moveTo(robot, pos=pos_up, orient=gripper_orient)
     print("ANGLES: ", robot.get_joint_angles())
 
     # Open gripper
-    robot.set_gripper_position([1]*2)
+    robot.set_gripper_position([3]*2)
     m.step_simulation(steps=50, realtime=True)
-    
+
     # Move down
-    # pos_up = (position[0], position[1], )
+    pos_up = (position[0], position[1], .85)
+    # m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, orientation=orientation, collision=False)
     moveTo(robot, pos=position, orient=gripper_orient)
     
     # Grab block
-    robot.set_gripper_position([0]*2, force=5000)
+    robot.set_gripper_position([0]*2, force=500)
     m.step_simulation(steps=100, realtime=True)
 
     # Move up
@@ -238,14 +301,15 @@ if __name__ == "__main__":
     createTray([.2, .4, 0.01], [0,0,.75], .01)
     board = TetrisBoard(0,0,.75)
 
-    # # Spawn
-    # createTray([.15, .15, 0.01], [s_x, s_y, .75], .01)
+    # Spawn
+    createTray([.15, .15, 0.01], [s_x, s_y, .75], .01)
     
-    block = generate_block('I')
+    # block = generate_block('O')
+
+    block = generate_block('Z', [s_x, s_y, .8])
 
     # begin simulation
     pb.setGravity(0, 0, -9.8)
-
     pb.setRealTimeSimulation(1)
 
 
@@ -274,21 +338,16 @@ if __name__ == "__main__":
 
 
     # Move to block spawn position
-    # moveToSpawn(robot)
     startPos(spawn_angle)
-    print("IN SPAWN!!!!!!!!!!!!")
-    time.sleep(5)
 
     # Grab block and return to base position
     grabBlock(block)
 
     # Rotate to board
     startPos(board_angle)
-    print("IN BOARD!!!!!!!!!!!!")
-    time.sleep(5)
 
     # Place block and return to base position
-    placeBlock(board, block, 0, 0, 1.5)
+    placeBlock(board, block, 0, 1, 1.5)
     m.step_simulation(steps=100, realtime=True)
     startPos(board_angle)
     time.sleep(10)
