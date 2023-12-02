@@ -4,14 +4,15 @@ import mengine as m
 import numpy as np
 import os
 import open3d as o3d
+import random
 
 
 default_euler = np.array([np.pi, 0, 0])
-s_x = .40
+s_x = .50
 s_y = .50
 
-board_angle = -np.pi/2
-spawn_angle = -np.pi
+board_angle = 0
+spawn_angle = -np.pi/2
 
 class TetrisBlock:
     def __init__(self, body, type):
@@ -25,7 +26,7 @@ class TetrisBlock:
 
         x_g = pos[0]
         y_g = pos[1]
-        z_g = pos[2] + .01     # .01 to grab, .02 to see point
+        z_g = pos[2] + .0     # .01 to grab, .02 to see point
         grab_pos = [x_g, y_g, z_g]  #TODO delete
         m.Shape(m.Sphere(.01), static=True, mass=0, position=grab_pos, collision=False) #TODO delete
 
@@ -49,13 +50,13 @@ class TetrisBlock:
             y_g = y_g + (d * np.sin(yaw + 3*np.pi/8))
 
         elif(self.type == 'S'):
-            d = .04
+            d = .05
             x_g = x_g + (d * np.cos(yaw - 7*np.pi/8))
             y_g = y_g + (d * np.sin(yaw - 7*np.pi/8))
             orient = m.get_quaternion([euler[0], euler[1], yaw + np.pi/2])
 
         elif(self.type == 'Z'):
-            d = .04
+            d = .05
             x_g = x_g + (d * np.cos(yaw + 7*np.pi/8))
             y_g = y_g + (d * np.sin(yaw + 7*np.pi/8))
             orient = m.get_quaternion([euler[0], euler[1], yaw + np.pi/2])
@@ -112,11 +113,12 @@ def get_point_cloud(obj):
 
 def generate_block(type, position=[0,0,0.8]):
     # Create a body
-    r_yaw = np.random.uniform(-np.pi, np.pi)
+    r_yaw = 0 #np.random.uniform(-np.pi, np.pi)
     print("Random yaw: ", r_yaw)
     block_body = 0
 
     if(type == 'I'):
+        position[1] = position[1] - .05 
         block_body = m.URDF(filename='./Tetris_I_description/urdf/Tetris_I.xacro', static=False, position=position,
                       orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
         
@@ -159,34 +161,34 @@ def moveTo(robot, pos=None, orient=None, joint_angles=None):
     if joint_angles is None:
         return
 
-    robot.control(joint_angles)
+    robot.control(joint_angles,  set_instantly=False)
+
     while np.linalg.norm(robot.get_joint_angles(robot.controllable_joints) - joint_angles) > 0.03: #originally 0.03
         m.step_simulation(realtime=True)
-        # print("Current joints: ",robot.get_motor_joint_states())
-        # print(np.linalg.norm(robot.get_joint_angles(robot.controllable_joints) - joint_angles))
     return
 
 def moveToSpawn(robot):
     # Move end effector to a starting position using IK
     moveTo(robot, pos=[s_x, s_y, 1], orient=m.get_quaternion(np.array([np.pi, 0, 0])))
-    # target_joint_angles = robot.ik(robot.end_effector,
-    #                             target_pos=[.5, 0.7, 1], target_orient=m.get_quaternion(np.array([np.pi, 0, 0])))
-    # robot.control(target_joint_angles)
-    print("move done!!!!!!!!!!!!!!!!!!!!!!!!!!!1")
 
 def startPos(angle):
+    print("Move to angle:", angle)
     # Move to start position with current angle
     start_joints = robot.get_joint_angles()
-
+    print(start_joints)
     joint_angles = [-1.6593, -1.4655,  1.3258, -2.2778, 1.3295,  1.4550,  1.5538]
     joint_angles[0] = start_joints[0]
     robot.control(joint_angles)
     m.step_simulation(steps=100, realtime=True)
+    start_joints = robot.get_joint_angles()
+    print(start_joints)
 
     # Rotate to target angle
     joint_angles[0] = angle
     robot.control(joint_angles)
     m.step_simulation(steps=100, realtime=True)
+    start_joints = robot.get_joint_angles()
+    print(start_joints)
 
 def getTypeOfBlock():
     pass #TODO
@@ -200,7 +202,6 @@ def moveInDirection():
 
 def grabBlock(obj):
     # position, orientation = pb.getBasePositionAndOrientation(obj.block.body, physicsClientId=obj.block.id)
-
     position, orientation = obj.getGrabPoint()  # delete later
 
     # Draw dot on top of block
@@ -217,9 +218,9 @@ def grabBlock(obj):
     m.step_simulation(steps=50, realtime=True)
 
     # Move down
-    pos_up = (position[0], position[1], .85)
+    pos_up = (position[0], position[1], .78)
     # m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, orientation=orientation, collision=False)
-    moveTo(robot, pos=position, orient=gripper_orient)
+    moveTo(robot, pos=position, orient=gripper_orient, )
     
     # Grab block
     robot.set_gripper_position([0]*2, force=500)
@@ -274,6 +275,106 @@ def createTray(size, pos, edge):
     base4 = m.Shape(m.Box(np.array([edge_s, base_y + (2*edge_s), 2*base_z])), static=True, 
                     position=np.array([b_pos_x-( base_x + edge_s), b_pos_y, b_pos_z + 2*base_z]), collision=True, rgba=[.5, .5, .5, 1])
     
+def moveToTest(robot, pos=None, orient=None, joint_angles=None):
+    """Move robot to a given ee_pose or joint angles. If both are given, ee_pose is used."""
+    if pos is not None:
+        joint_angles = robot.ik(robot.end_effector, target_pos=pos, target_orient=orient,
+                                use_current_joint_angles=True)
+    if joint_angles is None:
+        return
+
+    m.Shape(m.Sphere(.01), static=True, mass=0, position=pos, orientation=orient, collision=False)
+    robot.control(joint_angles,  set_instantly=False)
+
+    while np.linalg.norm(robot.get_joint_angles(robot.controllable_joints) - joint_angles) > 0.03: #originally 0.03
+        m.step_simulation(realtime=True)
+        # print("Current joints: ",robot.get_motor_joint_states())
+        # print(np.linalg.norm(robot.get_joint_angles(robot.controllable_joints) - joint_angles))
+
+    time.sleep(3)
+    return
+
+def getAngle(x, y):
+    a = np.arctan2(y,x-5) - np.pi
+    print("Angle: ", a)
+    return np.deg2rad(a)
+
+def testMovement():
+    y_up = 0.9
+    y_down = 0.82
+    gripper_orient = default_euler + [0, 0, np.pi/2]
+
+    # Move to center
+    startPos(getAngle(0, 0))
+    # startPos(board_angle)
+    moveToTest(robot, pos=[0,0,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[0,0,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[0,0,y_up], orient=gripper_orient)
+
+    # Move to Corner 1
+    x = -.2
+    y = -.4
+    startPos(getAngle(x, y))
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+
+    # Move to Corner 2
+    x = -.2
+    y = .4
+    startPos(getAngle(x, y))
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+
+    # Move to Corner 3
+    x = .2
+    y = .4
+    startPos(getAngle(x, y))
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+
+    # Move to Corner 4
+    x = .2
+    y = -.4
+    startPos(getAngle(x, y))
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+
+    # Move to Corner 4
+    x = .2
+    y =  0
+    startPos(getAngle(x, y))
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_down], orient=gripper_orient)
+    moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
+
+
+def startGame():
+    gameOver = False
+    all_blocks = []
+    # Set of characters
+    block_types = ['I', 'L', 'J', 'S', 'Z', 'O']
+
+
+    # Move to center
+
+    while(not gameOver):
+        # Spawn new random block
+        block_type = random.choice(block_types)
+        generate_block(block_types, [s_x, s_y, .8])
+
+        # Detect block type and run tetris solver to get target position
+
+        # Grab block
+
+        # Place block
+
+        # Make adjustments
+
+        time.sleep(5)
 
 if __name__ == "__main__":
 
@@ -286,16 +387,14 @@ if __name__ == "__main__":
                 orientation=m.get_quaternion(np.array([0, 0, np.pi/2])))
 
     # Create Panda manipulator
-    robot = m.Robot.Panda(position=[0.5, 0, 0.76], orientation=m.get_quaternion(np.array([0, 0, np.pi])))
-    robot.motor_gains = 0.03
+    robot = m.Robot.Panda(position=[0.4, 0, 0.76], orientation=m.get_quaternion(np.array([0, 0, np.pi/2])))
+    robot.motor_gains = 0.02
     robot.control([-1.6593, -1.4655,  1.3258, -2.2778, 1.3295,  1.4550,  1.5538], set_instantly=True)
     robot.update_joint_limits()
 
-    pb.setDebugObjectColor(1, 0, 0)  # Set color for collision shapes (R,G,B)
-    # pb.setDebugObjectMeshScale(0, [1, 1, 1])  # Set mesh scale for collision shapes
-    pb.configureDebugVisualizer(pb.COV_ENABLE_RENDERING, 1)
-    pb.configureDebugVisualizer(pb.COV_ENABLE_GUI, 1)
-    # pb.configureDebugVisualizer(pb.COV_ENABLE_WIREFRAME, 1)
+    print("Robot Limits:")
+    print(robot.lower_limits)
+    print(robot.upper_limits, "\n\n")
 
     # Board game
     createTray([.2, .4, 0.01], [0,0,.75], .01)
@@ -303,14 +402,15 @@ if __name__ == "__main__":
 
     # Spawn
     createTray([.15, .15, 0.01], [s_x, s_y, .75], .01)
-    
-    # block = generate_block('O')
 
-    block = generate_block('Z', [s_x, s_y, .8])
+    block = generate_block('I', [s_x, s_y, .8])
 
     # begin simulation
     pb.setGravity(0, 0, -9.8)
     pb.setRealTimeSimulation(1)
+
+    # testMovement()
+
 
 
     # time.sleep(100)
@@ -347,7 +447,7 @@ if __name__ == "__main__":
     startPos(board_angle)
 
     # Place block and return to base position
-    placeBlock(board, block, 0, 1, 1.5)
+    placeBlock(board, block, 0, 9, 10)
     m.step_simulation(steps=100, realtime=True)
     startPos(board_angle)
     time.sleep(10)

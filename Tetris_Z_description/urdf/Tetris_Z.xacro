@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+<robot name="Tetris_Z" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:include filename="$(find Tetris_Z_description)/urdf/materials.xacro" />
+
+<material name="color">
+  <color rgba="0.2 0.9 0.0 1.000"/>
+</material>
+
+<link name="base_link">
+  <inertial>
+    <origin xyz="0.02 0.04 0.02" rpy="0 0 0"/>
+    <mass value="0.26659"/>
+    <inertia ixx="0.000175" iyy="0.00028" izz="0.000386" ixy="0.000106" iyz="0.0" ixz="-0.0"/>
+  </inertial>
+
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Tetris_Z_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="color"/>
+  </visual>
+
+  <collision>
+    <origin xyz=".04 .02 .02" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.08 0.04 0.04"/> <!-- Adjust the size of the first box -->
+      <origin xyz="0.0 0.0 0.02" rpy="0 0 0"/> <!-- Offset the first box by (0.05, 0.05, 0.05) -->
+    </geometry>
+  </collision>
+
+  <collision>
+    <origin xyz=".0 .06 .02" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.08 0.04 0.04"/> <!-- Adjust the size of the first box -->
+      <origin xyz="0.0 0.0 0.02" rpy="0 0 0"/> <!-- Offset the first box by (0.05, 0.05, 0.05) -->
+    </geometry>
+  </collision>
+</link>
+
+</robot>
