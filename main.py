@@ -65,6 +65,41 @@ class TetrisBlock:
         m.Shape(m.Sphere(.01), static=True, mass=0, position=grab_pos, collision=False) #TODO delete
 
         return grab_pos, orient
+    
+def getBlockCoordinates(blockType, rot):
+    coordinates = []
+
+    if(blockType == 'T'):
+        coordinates = np.array([[0,0],[1,0],[1,1],[2,0]])
+
+    elif(blockType == 'I'):
+        coordinates = np.array([[0,0],[0,1],[0,2],[0,3]])
+
+    elif(blockType == 'L'):
+        coordinates = np.array([[0,0],[0,1],[0,2],[1,0]])
+
+    elif(blockType == 'J'):
+        coordinates = np.array([[0,0],[0,1],[0,2],[-1,0]])
+
+    elif(blockType == 'S'):
+        coordinates = np.array([[0,0],[1,0],[1,1],[2,1]])
+        
+    elif(blockType == 'Z'):
+        coordinates = np.array([[0,0],[-1,1],[0,1],[1,0]])
+
+    elif(blockType == 'O'):
+        coordinates = np.array([[0,0],[1,0],[1,0],[1,1]])
+
+    if(rot == 0):
+        return coordinates
+    
+    # Rotate
+    for r in range(rot):
+        temp = np.zeros(4,2)
+        temp[:,0] =  coordinates[:,1]
+        temp[:,1] = -coordinates[:,0]
+
+    return coordinates
 
 class TetrisBoard:
     def __init__(self, x_pos, y_pos, z_pos):
@@ -74,6 +109,7 @@ class TetrisBoard:
         self.x_pos = x_pos  #center of board
         self.y_pos = y_pos  #center of board
         self.z_pos = z_pos
+        self.board = np.zeros((self.x_blocks,self.y_blocks))
 
     # Returns position of center of block
     def get_square_pos(self,x,y):
@@ -82,6 +118,45 @@ class TetrisBoard:
         z_center = self.z_pos + (self.block_size/2)
 
         return [x_center, y_center, z_center]
+    
+    def addBlock(self, blockType):
+        
+        best_position = []
+        best_rotation = 0 
+        min_score     = 9999999
+
+        for col in range(self.x_blocks):
+            for rot in range(4):
+                for row in range(self.y_blocks):
+
+                    score = 0
+                    #Check block doesn't collide
+                    coord = getBlockCoordinates(blockType, rot)
+                    for c in range(4):
+                        x = col + coord[c,0]
+                        y = row + coord[c,1]
+
+                        if(x < 0 or x > self.x_blocks or y < 0 or y > self.y_blocks):
+                            score = 9999999  # invalid
+                        if(self.board[x,y] == 1):
+                            score = 9999999  # invalid
+                        
+                        score = score + y
+
+                    # Look for dead spaces
+                    # TODO
+                     
+                    # Get score
+                    if(score < min_score):
+                        min_score = score
+                        best_rotation = rot
+                        best_position = [row, col]
+
+
+                         
+
+
+
 
 def get_point_cloud(obj):
     """Returns object's point cloud and normals."""
@@ -114,8 +189,9 @@ def get_point_cloud(obj):
 def generate_block(type, position=[0,0,0.8]):
     # Create a body
     r_yaw = 0 #np.random.uniform(-np.pi, np.pi)
-    print("Random yaw: ", r_yaw)
+    # print("Random yaw: ", r_yaw)
     block_body = 0
+    print("Type: ", type)
 
     if(type == 'I'):
         position[1] = position[1] - .05 
@@ -146,7 +222,7 @@ def generate_block(type, position=[0,0,0.8]):
         block_body = m.URDF(filename='./Tetris_Z_description/urdf/Tetris_Z.xacro', static=False, position=position, 
                       orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
 
-    block_body.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=0)
+    block_body.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=220)
     m.step_simulation(50)
 
     block = TetrisBlock(block_body, type)
@@ -242,6 +318,8 @@ def placeBlock(board, block, rot, x, y):
     gripper_orient = default_euler + [0, 0, np.pi/2]
     m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, collision=False)
     moveTo(robot, pos=pos_up, orient=gripper_orient)
+
+    # TODO rotate end effector
 
     # Lower and release
     pos_down = (target_pos[0], target_pos[1], target_pos[2]+.03)
@@ -352,27 +430,36 @@ def testMovement():
     moveToTest(robot, pos=[x,y,y_up], orient=gripper_orient)
 
 
-def startGame():
+def startGame(board):
     gameOver = False
     all_blocks = []
     # Set of characters
-    block_types = ['I', 'L', 'J', 'S', 'Z', 'O']
+    block_types = ['I', 'L', 'J']  # TODO add 'O'
 
 
     # Move to center
+    # Move to block spawn position
+    startPos(spawn_angle)
 
     while(not gameOver):
         # Spawn new random block
         block_type = random.choice(block_types)
-        generate_block(block_types, [s_x, s_y, .8])
+        active_block = generate_block(block_type, [s_x, s_y, .8])
 
         # Detect block type and run tetris solver to get target position
+        # TODO
 
         # Grab block
+        grabBlock(active_block)
 
         # Place block
+        placeBlock(board, active_block, 0, 9, 10)
 
         # Make adjustments
+
+        # Return to base
+        # Move to block spawn position
+        startPos(spawn_angle)
 
         time.sleep(5)
 
@@ -403,12 +490,15 @@ if __name__ == "__main__":
     # Spawn
     createTray([.15, .15, 0.01], [s_x, s_y, .75], .01)
 
-    block = generate_block('I', [s_x, s_y, .8])
-
     # begin simulation
     pb.setGravity(0, 0, -9.8)
     pb.setRealTimeSimulation(1)
 
+
+    startGame(board)
+
+    block = generate_block('I', [s_x, s_y, .8])
+##################################3
     # testMovement()
 
 
