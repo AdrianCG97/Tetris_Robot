@@ -38,6 +38,7 @@ class TetrisBlock:
         elif(self.type == 'I'):
             x_g = x_g
             y_g = y_g
+            # orient = m.get_quaternion([euler[0], euler[1], yaw + np.pi/2])
 
         elif(self.type == 'L'):
             d = .015
@@ -95,11 +96,12 @@ def getBlockCoordinates(blockType, rot):
     
     # Rotate
     for r in range(rot):
-        temp = np.zeros(4,2)
+        temp = np.zeros((4,2))
         temp[:,0] =  coordinates[:,1]
         temp[:,1] = -coordinates[:,0]
+        coordinates = temp
 
-    return coordinates
+    return coordinates.astype(int)
 
 class TetrisBoard:
     def __init__(self, x_pos, y_pos, z_pos):
@@ -123,6 +125,7 @@ class TetrisBoard:
         
         best_position = []
         best_rotation = 0 
+        best_coord    = []
         min_score     = 9999999
 
         for col in range(self.x_blocks):
@@ -132,13 +135,14 @@ class TetrisBoard:
                     score = 0
                     #Check block doesn't collide
                     coord = getBlockCoordinates(blockType, rot)
+                    # print("{}, {}, {}, {}".format(coord[0], coord[1], coord[2], coord[3]))
                     for c in range(4):
                         x = col + coord[c,0]
                         y = row + coord[c,1]
 
-                        if(x < 0 or x > self.x_blocks or y < 0 or y > self.y_blocks):
+                        if(x < 0 or x >= self.x_blocks or y < 0 or y >= self.y_blocks):
                             score = 9999999  # invalid
-                        if(self.board[x,y] == 1):
+                        elif(self.board[x,y] == 1):
                             score = 9999999  # invalid
                         
                         score = score + y
@@ -147,16 +151,29 @@ class TetrisBoard:
                     # TODO
                      
                     # Get score
+                    # print("Pos: ({},{}), Rot: {}, Score: {}".format(col, row, rot,score))
                     if(score < min_score):
                         min_score = score
                         best_rotation = rot
-                        best_position = [row, col]
+                        best_position = [col, row]
+                        best_coord = coord
 
+        print("Best Rotation: "  , best_rotation)
+        print("Best coordinate: ", best_coord)
+        print("Best Position:   ", best_position)
+        # Fill board with new block
+        for i in range(4):
+            coord = best_coord[i] 
+            x = best_position[0] + coord[0]
+            y = best_position[1] + coord[1]
 
-                         
+            self.board[x,y] = 1
 
-
-
+        self.printBoard()
+        return best_position, best_rotation
+    
+    def printBoard(self):
+        print(np.flipud(np.transpose(self.board.astype(int))))
 
 def get_point_cloud(obj):
     """Returns object's point cloud and normals."""
@@ -222,7 +239,7 @@ def generate_block(type, position=[0,0,0.8]):
         block_body = m.URDF(filename='./Tetris_Z_description/urdf/Tetris_Z.xacro', static=False, position=position, 
                       orientation=m.get_quaternion(np.array([0, 0, r_yaw])))
 
-    block_body.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=220)
+    block_body.set_whole_body_frictions(lateral_friction=2000, spinning_friction=2000, rolling_friction=0)
     m.step_simulation(50)
 
     block = TetrisBlock(block_body, type)
@@ -251,20 +268,20 @@ def startPos(angle):
     print("Move to angle:", angle)
     # Move to start position with current angle
     start_joints = robot.get_joint_angles()
-    print(start_joints)
+    # print(start_joints)
     joint_angles = [-1.6593, -1.4655,  1.3258, -2.2778, 1.3295,  1.4550,  1.5538]
     joint_angles[0] = start_joints[0]
     robot.control(joint_angles)
     m.step_simulation(steps=100, realtime=True)
     start_joints = robot.get_joint_angles()
-    print(start_joints)
+    # print(start_joints)
 
     # Rotate to target angle
     joint_angles[0] = angle
     robot.control(joint_angles)
     m.step_simulation(steps=100, realtime=True)
     start_joints = robot.get_joint_angles()
-    print(start_joints)
+    # print(start_joints)
 
 def getTypeOfBlock():
     pass #TODO
@@ -276,7 +293,10 @@ def moveInDirection():
     # Translate end effector along a vector
     pass
 
-def grabBlock(obj):
+def get_offset(type, rot):
+    pass
+
+def grabBlock(obj, rot):
     # position, orientation = pb.getBasePositionAndOrientation(obj.block.body, physicsClientId=obj.block.id)
     position, orientation = obj.getGrabPoint()  # delete later
 
@@ -287,51 +307,69 @@ def grabBlock(obj):
     # Move above block
     gripper_orient = default_euler + [0, 0, np.pi/2 + m.get_euler(orientation)[-1]]
     moveTo(robot, pos=pos_up, orient=gripper_orient)
-    print("ANGLES: ", robot.get_joint_angles())
 
     # Open gripper
     robot.set_gripper_position([3]*2)
     m.step_simulation(steps=50, realtime=True)
 
     # Move down
-    pos_up = (position[0], position[1], .78)
-    # m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, orientation=orientation, collision=False)
-    moveTo(robot, pos=position, orient=gripper_orient, )
+    moveTo(robot, pos=position, orient=gripper_orient)
+
+    # joints = robot.get_motor_joint_states()[1]
+    # print("Pick up EEF1: ", joints[6])
+    # print("Pick up Orient: ", gripper_orient)
     
     # Grab block
-    robot.set_gripper_position([0]*2, force=500)
+    time.sleep(1)
+    robot.set_gripper_position([0]*2, force=100)
     m.step_simulation(steps=100, realtime=True)
 
     # Move up
     moveTo(robot, pos=pos_up, orient=gripper_orient)
 
 def placeBlock(board, block, rot, x, y):
-    # Check position/rotation/block combination is valid
-        #TODO
+
+    # Rotate to board
+    startPos(board_angle)
 
     # Get target center and orientation of block 
     target_pos = board.get_square_pos(x,y)
+    target_pos = target_pos + get_offset(block.type, rot)
     
     # Move above target location
     pos_up = (target_pos[0], target_pos[1], 1)
-    print("Pos Up: ", pos_up)
     gripper_orient = default_euler + [0, 0, np.pi/2]
-    m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, collision=False)
+    print("EE Angle: ",robot.get_motor_joint_states()[1][6])
+    # m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_up, collision=False)
     moveTo(robot, pos=pos_up, orient=gripper_orient)
-
-    # TODO rotate end effector
+    time.sleep(1)
 
     # Lower and release
-    pos_down = (target_pos[0], target_pos[1], target_pos[2]+.03)
-    print("Pos Up: ", pos_down)
-    gripper_orient = default_euler + [0, 0, np.pi/2]
-    m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_down, collision=False)
+    angle_offset = 0
+    if(block.type == 'S' or block.type == 'Z'):
+        angle_offset = -np.pi/2
+
+    pos_down = (target_pos[0], target_pos[1], target_pos[2]+.04)
+    gripper_orient = default_euler + [0, 0, ((1-rot) *np.pi/2) + angle_offset]
+    # m.Shape(m.Sphere(.01), static=True, mass=0, position=pos_down, collision=False)
     moveTo(robot, pos=pos_down, orient=gripper_orient)
+
+    # Rotate end effector
+    # joints = robot.get_motor_joint_states()[1]
+    # print("EEF1: ", joints[6])
+    # joints[6] = joints[6] + (np.pi/2)
+    # robot.control(joints[0:7])
+    m.step_simulation(steps=100, realtime=True)
+
+    # print("Drop EEF2: ", joints[6])
+    # print("Drop Orient(before rot): ", gripper_orient)
 
     robot.set_gripper_position([1]*2)
     m.step_simulation(steps=50, realtime=True)
     pos, ori = robot.get_link_pos_orient(robot.end_effector)
     moveTo(robot, pos + [0, 0, 0.1], ori)
+
+    m.step_simulation(steps=200, realtime=True)
 
 
 def createTray(size, pos, edge):
@@ -374,7 +412,7 @@ def moveToTest(robot, pos=None, orient=None, joint_angles=None):
 
 def getAngle(x, y):
     a = np.arctan2(y,x-5) - np.pi
-    print("Angle: ", a)
+    # print("Angle: ", a)
     return np.deg2rad(a)
 
 def testMovement():
@@ -434,7 +472,7 @@ def startGame(board):
     gameOver = False
     all_blocks = []
     # Set of characters
-    block_types = ['I', 'L', 'J']  # TODO add 'O'
+    block_types = ['I','J','L','S','Z','T']  # TODO add 'O'
 
 
     # Move to center
@@ -447,13 +485,14 @@ def startGame(board):
         active_block = generate_block(block_type, [s_x, s_y, .8])
 
         # Detect block type and run tetris solver to get target position
-        # TODO
+        board_pos, rot = board.addBlock(block_type)
+        print("Block of type {}, at pos={}, totation={}".format(block_type, board_pos, rot))
 
         # Grab block
-        grabBlock(active_block)
+        grabBlock(active_block, rot)
 
         # Place block
-        placeBlock(board, active_block, 0, 9, 10)
+        placeBlock(board, active_block, rot, board_pos[0], board_pos[1])
 
         # Make adjustments
 
